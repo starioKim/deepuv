@@ -64,11 +64,12 @@ def check_baseline_assets() -> None:
         )
 
 
-def import_polarrec_dataset():
+def import_polarrec_helpers():
     sys.path.insert(0, str(POLARREC_ROOT))
-    from data_ehtim_cont import EHT_Continuous_Dataset  # noqa: PLC0415
+    import torch  # noqa: PLC0415
+    from data_ehtim_cont import Galaxy10_DECals_Dataset, obs_with_eht, upscale_tensor  # noqa: PLC0415
 
-    return EHT_Continuous_Dataset
+    return Galaxy10_DECals_Dataset, obs_with_eht, torch, upscale_tensor
 
 
 def output_paths(data_root: Path, split: str, num_fourier: int, eht_npix: int) -> tuple[Path, Path]:
@@ -90,6 +91,59 @@ def create_dataset_from_sample(group: h5py.File, key: str, sample: np.ndarray, n
     )
 
 
+def simulate_visibility(
+    image_dataset,
+    idx: int,
+    *,
+    obs_with_eht,
+    torch,
+    upscale_tensor,
+    obs_type: str,
+    eht_npix: int,
+    num_fourier: int,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], dict[str, np.ndarray]]:
+    img, _ = image_dataset[idx]
+    img_res_initial = int(torch.numel(img) ** 0.5)
+    img = img.reshape((img_res_initial, img_res_initial))
+    if img_res_initial != 200:
+        img = upscale_tensor(img, final_res=200, method="cubic")
+        img = torch.from_numpy(img)
+
+    eht_obs, eht_im, _, _, _ = obs_with_eht(img, obs_type=obs_type, eht_npix=eht_npix)
+    u_eht = np.asarray(eht_obs.unpack(["u"], conj=True), dtype=float).reshape(-1)
+    v_eht = np.asarray(eht_obs.unpack(["v"], conj=True), dtype=float).reshape(-1)
+    vis_eht = np.asarray(eht_obs.unpack(["vis"], conj=True), dtype=complex).reshape(-1)
+    uv_dist_eht = np.asarray(eht_obs.unpack(["uvdist"], conj=True), dtype=float).reshape(-1)
+
+    cont_sparse = {
+        "uv": np.stack((u_eht, v_eht), axis=1),
+        "vis": vis_eht,
+    }
+
+    max_base = np.max(uv_dist_eht)
+    x = np.linspace(-max_base, max_base, num_fourier)
+    y = np.linspace(-max_base, max_base, num_fourier)
+    xv, yv = np.meshgrid(x, y)
+    grid_dense_uv = np.stack((xv.ravel(), yv.ravel()), axis=1)
+    grid_dense = {
+        "uv": grid_dense_uv,
+        "vis": eht_im.sample_uv(grid_dense_uv)[0],
+    }
+
+    x_centers = (x[1:] + x[:-1]) / 2
+    y_centers = (y[1:] + y[:-1]) / 2
+    u_dig = np.digitize(u_eht, x_centers)
+    v_dig = np.digitize(v_eht, y_centers)
+    uv_dig = np.stack((x[u_dig], y[v_dig]), axis=1)
+    grid_sparse_uv = np.unique(uv_dig, axis=0)
+    grid_sparse = {
+        "uv": grid_sparse_uv,
+        "vis": eht_im.sample_uv(grid_sparse_uv)[0],
+    }
+
+    return grid_dense, cont_sparse, grid_sparse
+
+
 def main() -> int:
     args = parse_args()
     check_baseline_assets()
@@ -103,24 +157,11 @@ def main() -> int:
         if path.exists() and not args.force:
             raise FileExistsError(f"{path} already exists; use --force to overwrite")
 
-    EHTContinuousDataset = import_polarrec_dataset()
+    Galaxy10DECalsDataset, obs_with_eht, torch, upscale_tensor = import_polarrec_helpers()
     cwd = Path.cwd()
     os.chdir(POLARREC_ROOT)
     try:
-        data_dir = POLARREC_ROOT / "data"
-        data_dir.mkdir(exist_ok=True)
-        target = data_dir / "Galaxy10_DECals.h5"
-        if target.exists() or target.is_symlink():
-            target.unlink()
-        target.symlink_to(image_path)
-
-        dataset = EHTContinuousDataset(
-            eht_npix=args.eht_npix,
-            num_FC=args.num_fourier,
-            dset_name="Galaxy10_DECals",
-            h5_path_img=str(image_path),
-            obs_type=args.obs_type,
-        )
+        dataset = Galaxy10DECalsDataset(str(image_path), None)
         n_samples = len(dataset) if args.max_samples is None else min(args.max_samples, len(dataset))
         if n_samples <= 0:
             raise ValueError("No samples requested")
@@ -132,7 +173,16 @@ def main() -> int:
                 path.unlink()
 
         with h5py.File(tmp_cont, "w") as cont_h5, h5py.File(tmp_grid, "w") as grid_h5:
-            first_grid_dense, first_cont_sparse, first_grid_sparse, _ = dataset[0]
+            first_grid_dense, first_cont_sparse, first_grid_sparse = simulate_visibility(
+                dataset,
+                0,
+                obs_with_eht=obs_with_eht,
+                torch=torch,
+                upscale_tensor=upscale_tensor,
+                obs_type=args.obs_type,
+                eht_npix=args.eht_npix,
+                num_fourier=args.num_fourier,
+            )
 
             grid_h5.create_dataset("u_sparse", data=first_grid_sparse["uv"][:, 0].astype(np.float32))
             grid_h5.create_dataset("v_sparse", data=first_grid_sparse["uv"][:, 1].astype(np.float32))
@@ -168,7 +218,16 @@ def main() -> int:
                         first_grid_sparse,
                     )
                 else:
-                    grid_dense, cont_sparse, grid_sparse, _ = dataset[idx]
+                    grid_dense, cont_sparse, grid_sparse = simulate_visibility(
+                        dataset,
+                        idx,
+                        obs_with_eht=obs_with_eht,
+                        torch=torch,
+                        upscale_tensor=upscale_tensor,
+                        obs_type=args.obs_type,
+                        eht_npix=args.eht_npix,
+                        num_fourier=args.num_fourier,
+                    )
 
                 grid_re_sparse[:, idx] = np.real(grid_sparse["vis"]).astype(np.float32)
                 grid_im_sparse[:, idx] = np.imag(grid_sparse["vis"]).astype(np.float32)
