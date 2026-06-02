@@ -9,6 +9,7 @@ from pathlib import Path
 import h5py
 import matplotlib
 import numpy as np
+from PIL import Image
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -79,11 +80,22 @@ def sparse_to_grid(
 
 def save_image(path: Path, image: np.ndarray, *, cmap: str = "gray") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(5, 5), dpi=160)
-    ax.imshow(image, cmap=cmap)
-    ax.set_axis_off()
-    fig.savefig(path, bbox_inches="tight", pad_inches=0)
-    plt.close(fig)
+    image = np.asarray(image)
+    if image.ndim == 3 and image.shape[-1] in (3, 4):
+        if image.dtype != np.uint8:
+            image = np.clip(image, 0.0, 1.0)
+            image = (255 * image).round().astype(np.uint8)
+        Image.fromarray(image).save(path)
+        return
+
+    image = normalize01(image)
+    if cmap == "gray":
+        out = (255 * image).round().astype(np.uint8)
+        Image.fromarray(out, mode="L").save(path)
+        return
+
+    out = (255 * plt.get_cmap(cmap)(image)[..., :3]).round().astype(np.uint8)
+    Image.fromarray(out, mode="RGB").save(path)
 
 
 def save_visibility_map(path: Path, vis_grid: np.ndarray, *, cmap: str = "magma") -> None:
