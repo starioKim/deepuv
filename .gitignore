@@ -20,9 +20,15 @@ dist/
 .DS_Store
 
 # Large data/model outputs should live outside the repo, under /datasets/deepuv.
-data/
-datasets/
-dataset/
+/data/
+/datasets/
+/dataset/
+baselines/PolarRec/data/
+baselines/PolarRec/logs/
+baselines/PolarRec/lightning_logs/
+baselines/PolarRec/val_fldr*/
+baselines/PolarRec/test_res*/
+baselines/PolarRec/*.ckpt
 *.h5
 *.hdf5
 *.fits
