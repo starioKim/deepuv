@@ -1,0 +1,35 @@
+# Python/cache artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build and packaging outputs
+build/
+dist/
+*.egg-info/
+
+# Logs and local machine state
+*.log
+.DS_Store
+
+# Large data/model outputs should live outside the repo, under /datasets/deepuv.
+data/
+datasets/
+dataset/
+*.h5
+*.hdf5
+*.fits
+*.fit
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.onnx
