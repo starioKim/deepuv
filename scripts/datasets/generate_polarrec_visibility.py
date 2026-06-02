@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eht-npix", type=int, default=200)
     parser.add_argument("--obs-type", choices=["eht", "sparse", "dense"], default="eht")
     parser.add_argument(
+        "--sample-ttype",
+        choices=["nfft", "fast", "direct"],
+        default="nfft",
+        help="eht-imaging Fourier sampler for dense/grid sparse visibility.",
+    )
+    parser.add_argument(
         "--max-samples",
         type=int,
         default=None,
@@ -101,6 +107,7 @@ def simulate_visibility(
     obs_type: str,
     eht_npix: int,
     num_fourier: int,
+    sample_ttype: str,
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], dict[str, np.ndarray]]:
     img, _ = image_dataset[idx]
     img_res_initial = int(torch.numel(img) ** 0.5)
@@ -127,7 +134,7 @@ def simulate_visibility(
     grid_dense_uv = np.stack((xv.ravel(), yv.ravel()), axis=1)
     grid_dense = {
         "uv": grid_dense_uv,
-        "vis": eht_im.sample_uv(grid_dense_uv)[0],
+        "vis": eht_im.sample_uv(grid_dense_uv, ttype=sample_ttype, verbose=False)[0],
     }
 
     x_centers = (x[1:] + x[:-1]) / 2
@@ -138,7 +145,7 @@ def simulate_visibility(
     grid_sparse_uv = np.unique(uv_dig, axis=0)
     grid_sparse = {
         "uv": grid_sparse_uv,
-        "vis": eht_im.sample_uv(grid_sparse_uv)[0],
+        "vis": eht_im.sample_uv(grid_sparse_uv, ttype=sample_ttype, verbose=False)[0],
     }
 
     return grid_dense, cont_sparse, grid_sparse
@@ -182,6 +189,7 @@ def main() -> int:
                 obs_type=args.obs_type,
                 eht_npix=args.eht_npix,
                 num_fourier=args.num_fourier,
+                sample_ttype=args.sample_ttype,
             )
 
             grid_h5.create_dataset("u_sparse", data=first_grid_sparse["uv"][:, 0].astype(np.float32))
@@ -227,6 +235,7 @@ def main() -> int:
                         obs_type=args.obs_type,
                         eht_npix=args.eht_npix,
                         num_fourier=args.num_fourier,
+                        sample_ttype=args.sample_ttype,
                     )
 
                 grid_re_sparse[:, idx] = np.real(grid_sparse["vis"]).astype(np.float32)
@@ -245,6 +254,7 @@ def main() -> int:
                 handle.attrs["num_fourier"] = args.num_fourier
                 handle.attrs["eht_npix"] = args.eht_npix
                 handle.attrs["obs_type"] = args.obs_type
+                handle.attrs["sample_ttype"] = args.sample_ttype
 
         os.replace(tmp_cont, cont_path)
         os.replace(tmp_grid, grid_path)
