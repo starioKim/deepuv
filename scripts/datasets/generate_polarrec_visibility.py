@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 import h5py
@@ -51,6 +52,11 @@ def parse_args() -> argparse.Namespace:
         "--force",
         action="store_true",
         help="Overwrite output files if they already exist.",
+    )
+    parser.add_argument(
+        "--reuse-cont",
+        action="store_true",
+        help="Reuse an existing continuous sparse HDF5 file and only write the grid HDF5 file.",
     )
     return parser.parse_args()
 
@@ -160,9 +166,12 @@ def main() -> int:
         raise FileNotFoundError(f"Missing image dataset: {image_path}")
 
     cont_path, grid_path = output_paths(args.data_root, args.split, args.num_fourier, args.eht_npix)
-    for path in (cont_path, grid_path):
-        if path.exists() and not args.force:
-            raise FileExistsError(f"{path} already exists; use --force to overwrite")
+    if cont_path.exists() and not (args.force or args.reuse_cont):
+        raise FileExistsError(f"{cont_path} already exists; use --force or --reuse-cont")
+    if args.reuse_cont and not cont_path.exists():
+        raise FileNotFoundError(f"{cont_path} does not exist; cannot use --reuse-cont")
+    if grid_path.exists() and not args.force:
+        raise FileExistsError(f"{grid_path} already exists; use --force to overwrite")
 
     Galaxy10DECalsDataset, obs_with_eht, torch, upscale_tensor = import_polarrec_helpers()
     cwd = Path.cwd()
@@ -173,13 +182,16 @@ def main() -> int:
         if n_samples <= 0:
             raise ValueError("No samples requested")
 
-        tmp_cont = cont_path.with_suffix(cont_path.suffix + ".tmp")
         tmp_grid = grid_path.with_suffix(grid_path.suffix + ".tmp")
+        tmp_cont = None if args.reuse_cont else cont_path.with_suffix(cont_path.suffix + ".tmp")
         for path in (tmp_cont, tmp_grid):
+            if path is None:
+                continue
             if path.exists():
                 path.unlink()
 
-        with h5py.File(tmp_cont, "w") as cont_h5, h5py.File(tmp_grid, "w") as grid_h5:
+        cont_context = nullcontext() if args.reuse_cont else h5py.File(tmp_cont, "w")
+        with cont_context as cont_h5, h5py.File(tmp_grid, "w") as grid_h5:
             first_grid_dense, first_cont_sparse, first_grid_sparse = simulate_visibility(
                 dataset,
                 0,
@@ -196,8 +208,9 @@ def main() -> int:
             grid_h5.create_dataset("v_sparse", data=first_grid_sparse["uv"][:, 1].astype(np.float32))
             grid_h5.create_dataset("u_dense", data=first_grid_dense["uv"][:, 0].astype(np.float32))
             grid_h5.create_dataset("v_dense", data=first_grid_dense["uv"][:, 1].astype(np.float32))
-            cont_h5.create_dataset("u_cont", data=first_cont_sparse["uv"][:, 0].astype(np.float32))
-            cont_h5.create_dataset("v_cont", data=first_cont_sparse["uv"][:, 1].astype(np.float32))
+            if cont_h5 is not None:
+                cont_h5.create_dataset("u_cont", data=first_cont_sparse["uv"][:, 0].astype(np.float32))
+                cont_h5.create_dataset("v_cont", data=first_cont_sparse["uv"][:, 1].astype(np.float32))
 
             grid_re_sparse = create_dataset_from_sample(
                 grid_h5, "vis_re_sparse", np.real(first_grid_sparse["vis"]), n_samples
@@ -211,12 +224,15 @@ def main() -> int:
             grid_im_dense = create_dataset_from_sample(
                 grid_h5, "vis_im_dense", np.imag(first_grid_dense["vis"]), n_samples
             )
-            cont_re = create_dataset_from_sample(
-                cont_h5, "vis_re_cont", np.real(first_cont_sparse["vis"]), n_samples
-            )
-            cont_im = create_dataset_from_sample(
-                cont_h5, "vis_im_cont", np.imag(first_cont_sparse["vis"]), n_samples
-            )
+            cont_re = None
+            cont_im = None
+            if cont_h5 is not None:
+                cont_re = create_dataset_from_sample(
+                    cont_h5, "vis_re_cont", np.real(first_cont_sparse["vis"]), n_samples
+                )
+                cont_im = create_dataset_from_sample(
+                    cont_h5, "vis_im_cont", np.imag(first_cont_sparse["vis"]), n_samples
+                )
 
             for idx in range(n_samples):
                 if idx == 0:
@@ -242,13 +258,16 @@ def main() -> int:
                 grid_im_sparse[:, idx] = np.imag(grid_sparse["vis"]).astype(np.float32)
                 grid_re_dense[:, idx] = np.real(grid_dense["vis"]).astype(np.float32)
                 grid_im_dense[:, idx] = np.imag(grid_dense["vis"]).astype(np.float32)
-                cont_re[:, idx] = np.real(cont_sparse["vis"]).astype(np.float32)
-                cont_im[:, idx] = np.imag(cont_sparse["vis"]).astype(np.float32)
+                if cont_re is not None and cont_im is not None:
+                    cont_re[:, idx] = np.real(cont_sparse["vis"]).astype(np.float32)
+                    cont_im[:, idx] = np.imag(cont_sparse["vis"]).astype(np.float32)
 
                 if idx % 25 == 0:
                     print(f"Generated {idx + 1}/{n_samples} samples")
 
             for handle in (cont_h5, grid_h5):
+                if handle is None:
+                    continue
                 handle.attrs["image_dataset"] = str(image_path)
                 handle.attrs["split"] = args.split
                 handle.attrs["num_fourier"] = args.num_fourier
@@ -256,9 +275,13 @@ def main() -> int:
                 handle.attrs["obs_type"] = args.obs_type
                 handle.attrs["sample_ttype"] = args.sample_ttype
 
-        os.replace(tmp_cont, cont_path)
+        if tmp_cont is not None:
+            os.replace(tmp_cont, cont_path)
         os.replace(tmp_grid, grid_path)
-        print(f"Wrote {cont_path}")
+        if tmp_cont is not None:
+            print(f"Wrote {cont_path}")
+        else:
+            print(f"Reused {cont_path}")
         print(f"Wrote {grid_path}")
     finally:
         os.chdir(cwd)

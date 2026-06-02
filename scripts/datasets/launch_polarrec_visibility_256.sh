@@ -21,6 +21,7 @@ for split in MG IRSG UTSG EGB; do
     --eht-npix 200 \
     --obs-type eht \
     --sample-ttype nfft \
+    --reuse-cont \
     > "${LOG_DIR}/generate_256_${split}.log" 2>&1 &
 done
 
