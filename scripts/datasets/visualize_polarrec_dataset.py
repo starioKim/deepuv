@@ -25,7 +25,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-root", type=Path, default=OUT_ROOT)
     parser.add_argument("--splits", nargs="+", default=list(SPLITS), choices=SPLITS)
     parser.add_argument("--indices", nargs="+", type=int, default=[0, 1, 2])
+    parser.add_argument(
+        "--all-indices",
+        action="store_true",
+        help="Visualize every sample in each selected split.",
+    )
     parser.add_argument("--num-fourier", nargs="+", type=int, default=[128, 256])
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip a sample directory when all expected PNG files already exist.",
+    )
     return parser.parse_args()
 
 
@@ -130,10 +140,32 @@ def save_overview(
     plt.close(fig)
 
 
-def visualize_split(data_root: Path, out_root: Path, split: str, indices: list[int], fcs: list[int]) -> None:
+def expected_pngs(sample_dir: Path) -> list[Path]:
+    return [
+        sample_dir / "image_clean_original.png",
+        sample_dir / "image_clean_luma.png",
+        sample_dir / "image_clean_from_dense_visibility.png",
+        sample_dir / "image_dirty_from_sparse_visibility.png",
+        sample_dir / "visibility_clean_dense_amplitude.png",
+        sample_dir / "visibility_dirty_sparse_amplitude.png",
+        sample_dir / "visibility_dirty_sparse_uv_scatter.png",
+        sample_dir / "overview.png",
+    ]
+
+
+def visualize_split(
+    data_root: Path,
+    out_root: Path,
+    split: str,
+    indices: list[int] | None,
+    fcs: list[int],
+    *,
+    skip_existing: bool,
+) -> None:
     image_path = data_root / "subsets" / f"Galaxy10_DECals_{split}.h5"
     with h5py.File(image_path, "r") as image_h5:
         labels = image_h5["ans"]
+        active_indices = list(range(len(labels))) if indices is None else indices
         for fc in fcs:
             grid_path = data_root / f"eht_grid_{fc}FC_200im_Galaxy10_DECals_{split}.h5"
             with h5py.File(grid_path, "r") as grid_h5:
@@ -141,9 +173,16 @@ def visualize_split(data_root: Path, out_root: Path, split: str, indices: list[i
                 v_dense = grid_h5["v_dense"][:]
                 u_sparse = grid_h5["u_sparse"][:]
                 v_sparse = grid_h5["v_sparse"][:]
-                for idx in indices:
+                for count, idx in enumerate(active_indices, start=1):
                     if idx < 0 or idx >= len(labels):
                         raise IndexError(f"{split} index {idx} out of range 0..{len(labels)-1}")
+                    sample_dir = out_root / split / f"{fc}FC" / f"sample_{idx:04d}"
+                    outputs = expected_pngs(sample_dir)
+                    if skip_existing and all(path.exists() for path in outputs):
+                        if count % 100 == 0:
+                            print(f"SKIP {split} {fc}FC {count}/{len(active_indices)}", flush=True)
+                        continue
+
                     clean_rgb = image_h5["images"][idx]
                     dense_vis = (
                         grid_h5["vis_re_dense"][:, idx] + 1j * grid_h5["vis_im_dense"][:, idx]
@@ -158,7 +197,6 @@ def visualize_split(data_root: Path, out_root: Path, split: str, indices: list[i
                     dense_image = visibility_to_image(dense_vis)
                     dirty_image = visibility_to_image(sparse_vis)
 
-                    sample_dir = out_root / split / f"{fc}FC" / f"sample_{idx:04d}"
                     save_image(sample_dir / "image_clean_original.png", clean_rgb)
                     save_image(sample_dir / "image_clean_luma.png", clean_luma)
                     save_image(sample_dir / "image_clean_from_dense_visibility.png", dense_image)
@@ -183,13 +221,21 @@ def visualize_split(data_root: Path, out_root: Path, split: str, indices: list[i
                         sparse_vis_values,
                         f"{split} sample {idx} ({fc}FC)",
                     )
-                    print(sample_dir)
+                    print(f"WROTE {split} {fc}FC {count}/{len(active_indices)} {sample_dir}", flush=True)
 
 
 def main() -> int:
     args = parse_args()
+    indices = None if args.all_indices else args.indices
     for split in args.splits:
-        visualize_split(args.data_root, args.out_root, split, args.indices, args.num_fourier)
+        visualize_split(
+            args.data_root,
+            args.out_root,
+            split,
+            indices,
+            args.num_fourier,
+            skip_existing=args.skip_existing,
+        )
     return 0
 
 
