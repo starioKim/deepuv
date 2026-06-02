@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 DATA_ROOT = Path("/datasets/deepuv/polarrec")
 OUT_ROOT = DATA_ROOT / "visualizations"
 SPLITS = ("MG", "IRSG", "UTSG", "EGB")
+EHT_FOV_RAD = np.radians(0.000291 / 3600)
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,9 +57,63 @@ def rgb_to_luma(image: np.ndarray) -> np.ndarray:
     return 0.2989 * image[..., 0] + 0.5870 * image[..., 1] + 0.1140 * image[..., 2]
 
 
-def visibility_to_image(vis_grid: np.ndarray) -> np.ndarray:
-    image = np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(vis_grid)))
-    return normalize01(np.abs(image), percentile=True)
+def dense_visibility_to_image(
+    vis_grid: np.ndarray,
+    x_phase: np.ndarray,
+    y_phase: np.ndarray,
+) -> np.ndarray:
+    """Render regularly gridded physical UV samples with PolarRec's IDFT convention."""
+    fc = vis_grid.shape[0]
+    image = (y_phase @ vis_grid @ x_phase.T) / (fc * fc)
+    return normalize01(np.real(image), percentile=True)
+
+
+def make_dense_phases(
+    u_dense: np.ndarray,
+    v_dense: np.ndarray,
+    npix: int,
+    *,
+    fov: float = EHT_FOV_RAD,
+) -> tuple[np.ndarray, np.ndarray]:
+    fc = npix
+    u_grid = np.asarray(u_dense).reshape(fc, fc)
+    v_grid = np.asarray(v_dense).reshape(fc, fc)
+    u_vals = u_grid[0, :].astype(np.float64)
+    v_vals = v_grid[:, 0].astype(np.float64)
+    pdim = fov / npix
+    xlist = np.arange(0, -npix, -1, dtype=np.float64) * pdim + (pdim * npix) / 2.0 - pdim / 2.0
+
+    x_phase = np.exp(-2j * np.pi * xlist[:, None] * u_vals[None, :]).astype(np.complex64)
+    y_phase = np.exp(-2j * np.pi * xlist[:, None] * v_vals[None, :]).astype(np.complex64)
+    return x_phase, y_phase
+
+
+def sparse_visibility_to_image(
+    sparse_phase: np.ndarray,
+    vis_sparse: np.ndarray,
+    npix: int,
+) -> np.ndarray:
+    """Render sparse physical UV samples with the same direct inverse Fourier convention."""
+    image = np.real(sparse_phase @ vis_sparse.astype(np.complex64)).reshape(npix, npix)
+    image /= max(len(vis_sparse), 1)
+    return normalize01(image, percentile=True)
+
+
+def make_sparse_phase(
+    u_sparse: np.ndarray,
+    v_sparse: np.ndarray,
+    npix: int,
+    *,
+    fov: float = EHT_FOV_RAD,
+) -> np.ndarray:
+    pdim = fov / npix
+    xlist = np.arange(0, -npix, -1, dtype=np.float64) * pdim + (pdim * npix) / 2.0 - pdim / 2.0
+    x_coord, y_coord = np.meshgrid(xlist, xlist)
+    phase = -2 * np.pi * (
+        x_coord.reshape(-1, 1) * np.asarray(u_sparse, dtype=np.float64)[None, :]
+        + y_coord.reshape(-1, 1) * np.asarray(v_sparse, dtype=np.float64)[None, :]
+    )
+    return np.exp(1j * phase).astype(np.complex64)
 
 
 def sparse_to_grid(
@@ -185,6 +240,8 @@ def visualize_split(
                 v_dense = grid_h5["v_dense"][:]
                 u_sparse = grid_h5["u_sparse"][:]
                 v_sparse = grid_h5["v_sparse"][:]
+                dense_x_phase, dense_y_phase = make_dense_phases(u_dense, v_dense, fc)
+                sparse_phase = make_sparse_phase(u_sparse, v_sparse, fc)
                 for count, idx in enumerate(active_indices, start=1):
                     if idx < 0 or idx >= len(labels):
                         raise IndexError(f"{split} index {idx} out of range 0..{len(labels)-1}")
@@ -206,8 +263,8 @@ def visualize_split(
                         u_dense, v_dense, u_sparse, v_sparse, sparse_vis_values, fc
                     )
                     clean_luma = rgb_to_luma(clean_rgb)
-                    dense_image = visibility_to_image(dense_vis)
-                    dirty_image = visibility_to_image(sparse_vis)
+                    dense_image = dense_visibility_to_image(dense_vis, dense_x_phase, dense_y_phase)
+                    dirty_image = sparse_visibility_to_image(sparse_phase, sparse_vis_values, fc)
 
                     save_image(sample_dir / "image_clean_original.png", clean_rgb)
                     save_image(sample_dir / "image_clean_luma.png", clean_luma)
