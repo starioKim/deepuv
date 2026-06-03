@@ -12,6 +12,8 @@ must use `/datasets/deepuv/polarrec` as the data root.
 ## Dataset Protocol
 
 - Dataset: `/datasets/deepuv/polarrec`
+- Slurm-visible staging path for 128FC training:
+  `/data/nfs/home/stario/datasets/deepuv/polarrec`
 - Split file: `/datasets/deepuv/polarrec/splits/polarrec_seed0_train70_val10_test20.json`
 - Stratified split across `MG`, `IRSG`, `UTSG`, `EGB`
 - Counts: train `5307`, val `758`, test `1517`
@@ -59,9 +61,4 @@ Training entrypoint:
 scripts/experiments/submit_uvdc_128.sh
 ```
 
-Current Slurm job:
-
-- Job id: `9634`
-- Method: `uvdc_128`
-- Partition: `a6000`
-
+Current Slurm job status should be checked with `squeue -u "$USER"`.
