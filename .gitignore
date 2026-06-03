@@ -17,6 +17,7 @@ dist/
 
 # Logs and local machine state
 *.log
+logs/
 .DS_Store
 
 # Large data/model outputs should live outside the repo, under /datasets/deepuv.
