@@ -1,0 +1,26 @@
+name: quantifai_env
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.7
+  - cudatoolkit-dev
+  - numpy=1.23.5
+  - scipy
+  - statsmodels
+  - pip:
+      - matplotlib
+      - tqdm
+      - scikit-image
+      - astropy
+      - arviz
+      - git+https://github.com/tobias-liaudat/complexPyTorch@v0.1
+      - git+https://github.com/tobias-liaudat/PyTorch-Wavelet-Toolbox@v0.1
+      - git+https://github.com/tobias-liaudat/convex_ridge_regularizers@v0.1

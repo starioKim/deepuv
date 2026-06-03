@@ -1,0 +1,17 @@
+env/
+.vscode
+*.egg*
+build/
+dist/
+__pycache__
+
+.ipynb_checkpoints/
+data/
+models/
+results/
+logs/
+
+*.pkl
+*.npy
+*.csv
+notebooks/archive/
