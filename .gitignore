@@ -28,6 +28,7 @@ baselines/PolarRec/logs/
 baselines/PolarRec/lightning_logs/
 baselines/PolarRec/val_fldr*/
 baselines/PolarRec/test_res*/
+results/
 baselines/PolarRec/*.ckpt
 *.h5
 *.hdf5
