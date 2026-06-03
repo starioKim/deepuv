@@ -36,7 +36,17 @@ baselines/PolarRec/*.ckpt
 *.fit
 *.npy
 *.npz
+*.mat
 *.pt
 *.pth
 *.ckpt
 *.onnx
+
+# Imported baseline demo data/model artifacts stay local.
+baselines/**/trained_models/
+baselines/**/data/**/*.jpg
+/baselines/AIRI/data/
+/baselines/QuantifAI/data/
+/baselines/QuantifAI/trained_models/
+/baselines/R2D2-SII/data/*.fits
+/baselines/R2D2-SII/data/*.mat
