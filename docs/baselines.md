@@ -34,13 +34,31 @@ related learned RI reconstruction papers:
 
 | Method | Imported Path | Upstream | Current Status |
 |---|---|---|---|
-| PolarRec | `baselines/PolarRec` | `https://github.com/RapidsAtHKUST/PolarRec` | Already imported earlier; needs train/test protocol adapter. |
-| POLISH | `baselines/POLISH` | `https://github.com/liamconnor/polish-pub` | Imported; dirty-image to clean-image adapter needed. |
-| AIRI | `baselines/AIRI` | `https://github.com/basp-group/AIRI` | Imported; plug-and-play RI operator adapter needed. |
-| R2D2 | `baselines/R2D2-SII` | `https://github.com/basp-group/R2D2-SII` | Imported; residual-series training adapter needed. |
+| PolarRec | `baselines/PolarRec` | `https://github.com/RapidsAtHKUST/PolarRec` | Imported; adapted neural-field evaluation job `polarrec_nf_128` submitted. |
+| POLISH | `baselines/POLISH` | `https://github.com/liamconnor/polish-pub` | Imported; adapted EDSR image-domain evaluation job `polish_edsr_128` submitted. |
+| AIRI | `baselines/AIRI` | `https://github.com/basp-group/AIRI` | Imported; official MATLAB plug-and-play adapter still pending. |
+| R2D2 | `baselines/R2D2-SII` | `https://github.com/basp-group/R2D2-SII` | Imported; adapted residual-series evaluation job `r2d2_series_128` submitted. |
 | QuantifAI | `baselines/QuantifAI` | `https://github.com/astro-informatics/QuantifAI` | Imported; Bayesian/UQ code likely needs separate env and RI operator adapter. |
-| LeIA | `baselines/LeIA` | `https://github.com/astro-informatics/LeIA` | Imported; varying-coverage learned imaging adapter needed. |
+| LeIA | `baselines/LeIA` | `https://github.com/astro-informatics/LeIA` | Imported; adapted U-Net/GU-Net image-domain jobs `leia_unet_128` and `leia_gunet_128` submitted. |
 | VIC-DDPM | `baselines/VIC-DDPM` | `https://github.com/RapidsAtHKUST/VIC-DDPM` | Imported; diffusion training adapter needed. |
+
+## Active Baseline Jobs
+
+Submitted on `2026-06-04` through `scripts/experiments/submit_baselines_128.sh`.
+
+| Job | Method | Output Directory | Adapter Type |
+|---:|---|---|---|
+| `9674` | `vis_unet` | `results/polarrec/vis_unet_128` | Visibility U-Net dense-grid baseline. |
+| `9675` | `leia_unet` | `results/polarrec/leia_unet_128` | LeIA-style image U-Net from dirty image. |
+| `9676` | `leia_gunet` | `results/polarrec/leia_gunet_128` | LeIA/GU-Net-style dirty image plus PSF input. |
+| `9677` | `polish_edsr` | `results/polarrec/polish_edsr_128` | POLISH-style EDSR image baseline. |
+| `9678` | `r2d2_series` | `results/polarrec/r2d2_series_128` | R2D2-style residual image-series baseline. |
+| `9679` | `polarrec_nf` | `results/polarrec/polarrec_nf_128` | PolarRec-style transformer-conditioned neural field. |
+
+These adapted jobs use the same train/val/test JSON split, same 128FC gridded
+visibility files, and the same metric writer as `UVDCNet`. Image-domain methods
+do not directly predict dense visibility, so their `LFD` field is recorded as
+`NaN` unless a visibility-domain output is available.
 
 ## Own Method
 
@@ -62,3 +80,17 @@ scripts/experiments/submit_uvdc_128.sh
 ```
 
 Current Slurm job status should be checked with `squeue -u "$USER"`.
+
+## Baseline Entry Points
+
+The adapted baseline trainer is:
+
+```bash
+python scripts/experiments/train_baseline.py --method vis_unet ...
+```
+
+The Slurm submitter is:
+
+```bash
+scripts/experiments/submit_baselines_128.sh
+```

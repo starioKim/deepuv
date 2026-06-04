@@ -105,6 +105,7 @@ class PolarRecGridDataset(Dataset):
         self._image_h5: dict[str, h5py.File] = {}
         self._grid_h5: dict[str, h5py.File] = {}
         self._sparse_indices: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self._uv_coords_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -141,6 +142,21 @@ class PolarRecGridDataset(Dataset):
             self._sparse_indices[split] = (y_idx.astype(np.int64), x_idx.astype(np.int64))
         return self._sparse_indices[split]
 
+    def _uv_coords(self, split: str) -> tuple[np.ndarray, np.ndarray]:
+        if split in self._uv_coords_cache:
+            return self._uv_coords_cache[split]
+        handle = self._grid_handle(split)
+        fc = self.num_fourier
+        u_dense = handle["u_dense"][:].astype(np.float32).reshape(fc, fc)
+        v_dense = handle["v_dense"][:].astype(np.float32).reshape(fc, fc)
+        max_base = float(max(np.abs(u_dense).max(), np.abs(v_dense).max(), 1.0))
+        dense_uv = np.stack([u_dense.reshape(-1), v_dense.reshape(-1)], axis=-1) / (2.0 * max_base)
+        y_idx, x_idx = self._indices(split)
+        sparse_uv = np.stack([u_dense[y_idx, x_idx], v_dense[y_idx, x_idx]], axis=-1) / (2.0 * max_base)
+        coords = (sparse_uv.astype(np.float32), dense_uv.astype(np.float32))
+        self._uv_coords_cache[split] = coords
+        return coords
+
     def __getitem__(self, item: int) -> dict[str, torch.Tensor | str | int]:
         sample = self.samples[item]
         grid_h5 = self._grid_handle(sample.split)
@@ -152,6 +168,7 @@ class PolarRecGridDataset(Dataset):
         sparse_re = grid_h5["vis_re_sparse"][:, sample.index].astype(np.float32)
         sparse_im = grid_h5["vis_im_sparse"][:, sample.index].astype(np.float32)
         y_idx, x_idx = self._indices(sample.split)
+        sparse_uv, dense_uv = self._uv_coords(sample.split)
 
         measured = np.zeros((2, fc, fc), dtype=np.float32)
         mask = np.zeros((1, fc, fc), dtype=np.float32)
@@ -164,6 +181,7 @@ class PolarRecGridDataset(Dataset):
         scale = float(max(scale, 1e-6))
         measured /= scale
         dense /= scale
+        sparse_vis = np.stack([sparse_re / scale, sparse_im / scale], axis=-1)
 
         image = luma_from_rgb_uint8(image_h5["images"][sample.index])
         image_t = torch.from_numpy(image)[None, None]
@@ -176,8 +194,10 @@ class PolarRecGridDataset(Dataset):
             "mask": torch.from_numpy(mask),
             "target_vis": torch.from_numpy(dense),
             "target_image": image_t.float(),
+            "sparse_uv": torch.from_numpy(sparse_uv),
+            "sparse_vis": torch.from_numpy(sparse_vis.astype(np.float32)),
+            "dense_uv": torch.from_numpy(dense_uv),
             "scale": torch.tensor(scale, dtype=torch.float32),
             "split": sample.split,
             "index": sample.index,
         }
-
