@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 
@@ -25,22 +26,22 @@ def main() -> int:
         "| method | n_test | PSNR ↑ | SSIM ↑ | MSE ↓ | MAE ↓ | LFD ↓ |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
+
+    def fmt(mean: float, std: float, digits: int) -> str:
+        if math.isnan(mean) or math.isnan(std):
+            return "N/A"
+        return f"{mean:.{digits}f} ± {std:.{digits}f}"
+
     for name, metrics in rows:
         lines.append(
-            "| {name} | {n:.0f} | {psnr:.4f} ± {psnr_std:.4f} | {ssim:.4f} ± {ssim_std:.4f} | "
-            "{mse:.6f} ± {mse_std:.6f} | {mae:.6f} ± {mae_std:.6f} | {lfd:.6f} ± {lfd_std:.6f} |".format(
+            "| {name} | {n:.0f} | {psnr} | {ssim} | {mse} | {mae} | {lfd} |".format(
                 name=name,
                 n=metrics.get("n_test", 0.0),
-                psnr=metrics.get("psnr_mean", float("nan")),
-                psnr_std=metrics.get("psnr_std", float("nan")),
-                ssim=metrics.get("ssim_mean", float("nan")),
-                ssim_std=metrics.get("ssim_std", float("nan")),
-                mse=metrics.get("mse_mean", float("nan")),
-                mse_std=metrics.get("mse_std", float("nan")),
-                mae=metrics.get("mae_mean", float("nan")),
-                mae_std=metrics.get("mae_std", float("nan")),
-                lfd=metrics.get("lfd_mean", float("nan")),
-                lfd_std=metrics.get("lfd_std", float("nan")),
+                psnr=fmt(metrics.get("psnr_mean", float("nan")), metrics.get("psnr_std", float("nan")), 4),
+                ssim=fmt(metrics.get("ssim_mean", float("nan")), metrics.get("ssim_std", float("nan")), 4),
+                mse=fmt(metrics.get("mse_mean", float("nan")), metrics.get("mse_std", float("nan")), 6),
+                mae=fmt(metrics.get("mae_mean", float("nan")), metrics.get("mae_std", float("nan")), 6),
+                lfd=fmt(metrics.get("lfd_mean", float("nan")), metrics.get("lfd_std", float("nan")), 6),
             )
         )
     args.output.parent.mkdir(parents=True, exist_ok=True)

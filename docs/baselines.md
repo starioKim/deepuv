@@ -34,32 +34,28 @@ related learned RI reconstruction papers:
 
 | Method | Imported Path | Upstream | Current Status |
 |---|---|---|---|
-| PolarRec | `baselines/PolarRec` | `https://github.com/RapidsAtHKUST/PolarRec` | Imported; adapted neural-field evaluation job `polarrec_nf_128` submitted. |
-| POLISH | `baselines/POLISH` | `https://github.com/liamconnor/polish-pub` | Imported; adapted EDSR image-domain evaluation job `polish_edsr_128` submitted. |
+| PolarRec | `baselines/PolarRec` | `https://github.com/RapidsAtHKUST/PolarRec` | Imported; no pretrained checkpoint found, so testing requires retraining or a compatible checkpoint. |
+| POLISH | `baselines/POLISH` | `https://github.com/liamconnor/polish-pub` | Imported; no pretrained weights found, so testing requires retraining or a compatible checkpoint. |
 | AIRI | `baselines/AIRI` | `https://github.com/basp-group/AIRI` | Imported; official MATLAB plug-and-play adapter still pending. |
-| R2D2 | `baselines/R2D2-SII` | `https://github.com/basp-group/R2D2-SII` | Imported; adapted residual-series evaluation job `r2d2_series_128` submitted. |
+| R2D2 | `baselines/R2D2-SII` | `https://github.com/basp-group/R2D2-SII` | Imported; no pretrained checkpoint found, so testing requires retraining or a compatible checkpoint. |
 | QuantifAI | `baselines/QuantifAI` | `https://github.com/astro-informatics/QuantifAI` | Imported; Bayesian/UQ code likely needs separate env and RI operator adapter. |
-| LeIA | `baselines/LeIA` | `https://github.com/astro-informatics/LeIA` | Imported; adapted U-Net/GU-Net image-domain jobs `leia_unet_128` and `leia_gunet_128` submitted. |
-| VIC-DDPM | `baselines/VIC-DDPM` | `https://github.com/RapidsAtHKUST/VIC-DDPM` | Imported; diffusion training adapter needed. |
+| LeIA | `baselines/LeIA` | `https://github.com/astro-informatics/LeIA` | Imported; no pretrained checkpoint found, so testing requires retraining or a compatible checkpoint. |
+| VIC-DDPM | `baselines/VIC-DDPM` | `https://github.com/RapidsAtHKUST/VIC-DDPM` | Imported; no pretrained checkpoint found, so testing requires retraining or a compatible checkpoint. |
 | Deep Split-Bregman Deconvolution | `baselines/Deep-Split-Bregman-Deconvolution-Network` | `https://github.com/MoerAttempts/the-Deep-Split-Bregman-Deconvolution-Network` | Imported; example-only unsupervised per-sample adapter pending. |
 
-## Active Baseline Jobs
+## No-Retraining Evaluations
 
-Submitted on `2026-06-04` through `scripts/experiments/submit_baselines_128.sh`.
+The supervised neural baseline jobs submitted on `2026-06-04` were cancelled
+after the scope changed to methods that do not require retraining. No Slurm jobs
+are currently active.
 
-| Job | Method | Output Directory | Adapter Type |
-|---:|---|---|---|
-| `9674` | `vis_unet` | `results/polarrec/vis_unet_128` | Visibility U-Net dense-grid baseline. |
-| `9675` | `leia_unet` | `results/polarrec/leia_unet_128` | LeIA-style image U-Net from dirty image. |
-| `9676` | `leia_gunet` | `results/polarrec/leia_gunet_128` | LeIA/GU-Net-style dirty image plus PSF input. |
-| `9677` | `polish_edsr` | `results/polarrec/polish_edsr_128` | POLISH-style EDSR image baseline. |
-| `9678` | `r2d2_series` | `results/polarrec/r2d2_series_128` | R2D2-style residual image-series baseline. |
-| `9679` | `polarrec_nf` | `results/polarrec/polarrec_nf_128` | PolarRec-style transformer-conditioned neural field. |
+Completed no-retraining test-set evaluations:
 
-These adapted jobs use the same train/val/test JSON split, same 128FC gridded
-visibility files, and the same metric writer as `UVDCNet`. Image-domain methods
-do not directly predict dense visibility, so their `LFD` field is recorded as
-`NaN` unless a visibility-domain output is available.
+| Method | Output Directory | Notes |
+|---|---|---|
+| Zero-filled sparse UV | `results/polarrec/zero_filled_128` | Existing sparse-UV baseline. |
+| Nearest UV interpolation | `results/polarrec/nearest_uv_128` | Fills unobserved UV grid points from nearest observed UV samples. |
+| Hogbom CLEAN | `results/polarrec/hogbom_clean_128` | Classical image-only CLEAN; `LFD` is not applicable. |
 
 ## Own Method
 
@@ -84,7 +80,8 @@ Current Slurm job status should be checked with `squeue -u "$USER"`.
 
 ## Baseline Entry Points
 
-The adapted baseline trainer is:
+The supervised adapted baseline trainer is available but should only be used
+when retraining is allowed:
 
 ```bash
 python scripts/experiments/train_baseline.py --method vis_unet ...
@@ -94,4 +91,10 @@ The Slurm submitter is:
 
 ```bash
 scripts/experiments/submit_baselines_128.sh
+```
+
+The no-retraining evaluator is:
+
+```bash
+python scripts/experiments/eval_no_retrain_baselines.py --method nearest_uv
 ```
