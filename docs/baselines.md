@@ -41,6 +41,7 @@ related learned RI reconstruction papers:
 | QuantifAI | `baselines/QuantifAI` | `https://github.com/astro-informatics/QuantifAI` | Imported; Bayesian/UQ code likely needs separate env and RI operator adapter. |
 | LeIA | `baselines/LeIA` | `https://github.com/astro-informatics/LeIA` | Imported; adapted U-Net/GU-Net image-domain jobs `leia_unet_128` and `leia_gunet_128` submitted. |
 | VIC-DDPM | `baselines/VIC-DDPM` | `https://github.com/RapidsAtHKUST/VIC-DDPM` | Imported; diffusion training adapter needed. |
+| Deep Split-Bregman Deconvolution | `baselines/Deep-Split-Bregman-Deconvolution-Network` | `https://github.com/MoerAttempts/the-Deep-Split-Bregman-Deconvolution-Network` | Imported; example-only unsupervised per-sample adapter pending. |
 
 ## Active Baseline Jobs
 
