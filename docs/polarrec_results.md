@@ -38,3 +38,19 @@ completed no-retraining baselines are:
 Pretrained weights were not present in the imported PolarRec, POLISH,
 VIC-DDPM, LeIA, R2D2, or QuantifAI source trees, so those learned methods cannot
 be tested without either downloading compatible checkpoints or retraining.
+
+## PolarRec Reproduction Run
+
+PolarRec-paper-style retraining is active after retraining was approved.
+
+- Slurm job: `9680`
+- Partition: `pro6000`
+- Output directory: `results/polarrec/polarrec_paper_128`
+- Epochs: `400`
+- Batch size: `2`
+- Learning rate: `1e-4`
+- Status on `2026-06-04 10:21 KST`: running, epoch `2/400`
+- Current validation loss at epoch 2: `0.04273505707450781`
+
+This run uses the fixed train/val/test JSON split and evaluates only the held-out
+test set after training.
