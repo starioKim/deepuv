@@ -160,3 +160,98 @@ class PolarNeuralField(nn.Module):
         context = context[:, None].expand(-1, dense_pe.shape[1], -1)
         return self.query(torch.cat([dense_pe, context], dim=-1))
 
+
+class FiLMLinear(nn.Module):
+    def __init__(self, in_dim: int, out_dim: int, context_dim: int) -> None:
+        super().__init__()
+        self.linear = nn.Linear(in_dim, out_dim)
+        self.gamma = nn.Linear(context_dim, out_dim)
+        self.beta = nn.Linear(context_dim, out_dim)
+
+    def forward(self, x: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
+        return self.linear(x) * self.gamma(context) + self.beta(context)
+
+
+class PolarRecPaperNet(nn.Module):
+    """PolarRec-like transformer-conditioned neural field adapted to the fixed HDF5 split.
+
+    The structure follows the imported PolarRec code path: positional encoding
+    on sparse UV samples, polar-angle token sorting and group pooling, a
+    transformer encoder, and a FiLM-conditioned MLP queried at dense UV points.
+    """
+
+    def __init__(
+        self,
+        fourier_bands: int = 64,
+        token_dim: int = 512,
+        transformer_layers: int = 4,
+        heads: int = 16,
+        context_dim: int = 1024,
+        output_tokens: int = 8,
+        mlp_hidden: int = 256,
+        group_size: int = 16,
+    ) -> None:
+        super().__init__()
+        self.fourier_bands = fourier_bands
+        self.output_tokens = output_tokens
+        self.group_size = group_size
+        pe_dim = 2 * (1 + 2 * fourier_bands)
+        self.pe_dim = pe_dim
+        self.value_embedding = nn.Linear(2, token_dim - pe_dim)
+        self.before_pool = nn.Sequential(
+            nn.Linear(token_dim, token_dim // 2),
+            nn.LeakyReLU(inplace=True),
+            nn.Linear(token_dim // 2, token_dim),
+        )
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=token_dim,
+            nhead=heads,
+            dim_feedforward=token_dim,
+            dropout=0.1,
+            batch_first=True,
+            activation="gelu",
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=transformer_layers)
+        self.context_heads = nn.ModuleList(
+            nn.Sequential(nn.LayerNorm(token_dim), nn.Linear(token_dim, context_dim)) for _ in range(output_tokens)
+        )
+        self.mlp_layers = nn.ModuleList()
+        self.activations = nn.ModuleList()
+        in_dim = pe_dim
+        for _ in range(output_tokens - 1):
+            self.mlp_layers.append(FiLMLinear(in_dim, mlp_hidden, context_dim))
+            self.activations.append(nn.ReLU(inplace=True))
+            in_dim = mlp_hidden
+        self.final = FiLMLinear(in_dim, 2, context_dim)
+
+    def encode_context(self, sparse_uv: torch.Tensor, sparse_vis: torch.Tensor) -> torch.Tensor:
+        sparse_pe = fourier_features(sparse_uv, self.fourier_bands)
+        value = self.value_embedding(sparse_vis)
+        tokens = torch.cat([sparse_pe, value], dim=-1)
+        angles = torch.atan2(sparse_uv[..., 1], sparse_uv[..., 0])
+        order = torch.argsort(angles, dim=1)
+        gather_idx = order[..., None].expand(-1, -1, tokens.shape[-1])
+        tokens = torch.gather(tokens, dim=1, index=gather_idx)
+        tokens = self.before_pool(tokens)
+
+        bsz, n_tokens, channels = tokens.shape
+        pooled_tokens = max(self.output_tokens, n_tokens // self.group_size)
+        if n_tokens % pooled_tokens:
+            pad = pooled_tokens - (n_tokens % pooled_tokens)
+            tokens = torch.cat([tokens, tokens[:, -1:].expand(-1, pad, -1)], dim=1)
+            n_tokens = tokens.shape[1]
+        tokens = tokens.reshape(bsz, pooled_tokens, n_tokens // pooled_tokens, channels).mean(dim=2)
+        encoded = self.encoder(tokens)
+        if encoded.shape[1] < self.output_tokens:
+            pad = self.output_tokens - encoded.shape[1]
+            encoded = torch.cat([encoded, encoded[:, -1:].expand(-1, pad, -1)], dim=1)
+        contexts = [head(encoded[:, i]) for i, head in enumerate(self.context_heads)]
+        return torch.stack(contexts, dim=1)
+
+    def forward(self, sparse_uv: torch.Tensor, sparse_vis: torch.Tensor, dense_uv: torch.Tensor) -> torch.Tensor:
+        contexts = self.encode_context(sparse_uv, sparse_vis)
+        x = fourier_features(dense_uv, self.fourier_bands)
+        for i, (layer, activation) in enumerate(zip(self.mlp_layers, self.activations)):
+            context = contexts[:, i, :][:, None]
+            x = activation(layer(x, context))
+        return self.final(x, contexts[:, -1, :][:, None])

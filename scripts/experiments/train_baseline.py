@@ -15,14 +15,14 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from deepuv.baseline_models import EDSRImage, PolarNeuralField, R2D2ImageSeries, UNet2D
+from deepuv.baseline_models import EDSRImage, PolarNeuralField, PolarRecPaperNet, R2D2ImageSeries, UNet2D
 from deepuv.metrics import aggregate, image_metrics, lfd
 from deepuv.polarrec_dataset import PolarRecGridDataset, normalize_image_batch
 from deepuv.uvdc_model import centered_ifft_image
 
 
 IMAGE_METHODS = {"leia_unet", "leia_gunet", "polish_edsr", "r2d2_series"}
-VIS_METHODS = {"vis_unet", "polarrec_nf"}
+VIS_METHODS = {"vis_unet", "polarrec_nf", "polarrec_paper"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,6 +84,8 @@ def build_model(method: str) -> torch.nn.Module:
         return R2D2ImageSeries(steps=6, channels=48)
     if method == "polarrec_nf":
         return PolarNeuralField(fourier_bands=8, token_dim=128, context_dim=128, transformer_layers=2)
+    if method == "polarrec_paper":
+        return PolarRecPaperNet()
     raise ValueError(f"unknown method {method}")
 
 
@@ -99,7 +101,7 @@ def forward_model(model: torch.nn.Module, method: str, batch: dict[str, torch.Te
     if method == "vis_unet":
         pred_vis = model(torch.cat([batch["measured"], batch["mask"]], dim=1))
         return {"pred_vis": pred_vis, "pred_image": centered_ifft_image(pred_vis)}
-    if method == "polarrec_nf":
+    if method in {"polarrec_nf", "polarrec_paper"}:
         bsz = batch["target_vis"].shape[0]
         fc = batch["target_vis"].shape[-1]
         pred_flat = model(batch["sparse_uv"], batch["sparse_vis"], batch["dense_uv"])
@@ -118,10 +120,29 @@ def forward_model(model: torch.nn.Module, method: str, batch: dict[str, torch.Te
     raise ValueError(f"unknown method {method}")
 
 
+def polarrec_frequency_loss(pred_vis: torch.Tensor, target_vis: torch.Tensor, beta: float = 1.0) -> torch.Tensor:
+    diff = pred_vis - target_vis
+    distance = diff[:, 0] ** 2 + diff[:, 1] ** 2
+    dynamic = distance.detach().sqrt()
+    dynamic = dynamic / dynamic.flatten(1).amax(dim=1).clamp_min(1e-6)[:, None, None]
+    height, width = distance.shape[-2:]
+    yy, xx = torch.meshgrid(
+        torch.arange(height, device=distance.device),
+        torch.arange(width, device=distance.device),
+        indexing="ij",
+    )
+    radius = torch.sqrt((yy - height / 2) ** 2 + (xx - width / 2) ** 2)
+    radius = (radius / radius.max().clamp_min(1e-6) + 1.0) ** beta
+    return (dynamic * radius[None] * distance).mean()
+
+
 def loss_fn(outputs: dict[str, torch.Tensor], method: str, batch: dict[str, torch.Tensor], image_weight: float) -> torch.Tensor:
     target_image = normalize_image_batch(batch["target_image"])
     if method in VIS_METHODS:
-        vis_loss = F.smooth_l1_loss(outputs["pred_vis"], batch["target_vis"])
+        if method == "polarrec_paper":
+            vis_loss = polarrec_frequency_loss(outputs["pred_vis"], batch["target_vis"])
+        else:
+            vis_loss = F.smooth_l1_loss(outputs["pred_vis"], batch["target_vis"])
         image_loss = F.l1_loss(outputs["pred_image"], target_image)
         return vis_loss + image_weight * image_loss
     return F.l1_loss(outputs["pred_image"], target_image) + F.mse_loss(outputs["pred_image"], target_image)
