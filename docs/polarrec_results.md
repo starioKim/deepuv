@@ -7,6 +7,7 @@ The test set has `1517` samples and was not used during training or validation.
 | method | FC | n_test | PSNR ↑ | SSIM ↑ | MSE ↓ | MAE ↓ | LFD ↓ |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | UVDCNet | 128 | 1517 | 19.2128 ± 1.5508 | 0.4704 ± 0.0599 | 0.012785 ± 0.004937 | 0.052352 ± 0.012269 | 0.007599 ± 0.004771 |
+| PolarRec-paper-style | 128 | 1517 | 18.3926 ± 2.2089 | 0.4535 ± 0.0577 | 0.016568 ± 0.009427 | 0.058953 ± 0.020761 | 0.007663 ± 0.005325 |
 | Zero-filled sparse UV | 128 | 1517 | 5.6989 ± 1.0820 | 0.1042 ± 0.0173 | 0.277598 ± 0.069012 | 0.504557 ± 0.064187 | 0.022771 ± 0.006543 |
 | Nearest UV interpolation | 128 | 1517 | 4.5268 ± 1.5390 | 0.1182 ± 0.0296 | 0.372313 ± 0.110625 | 0.594044 ± 0.098762 | 0.030552 ± 0.008380 |
 | Hogbom CLEAN | 128 | 1517 | 3.5942 ± 0.9598 | 0.0829 ± 0.0137 | 0.446224 ± 0.078551 | 0.643909 ± 0.065774 | N/A |
@@ -41,16 +42,20 @@ be tested without either downloading compatible checkpoints or retraining.
 
 ## PolarRec Reproduction Run
 
-PolarRec-paper-style retraining is active after retraining was approved.
+PolarRec-paper-style retraining completed successfully after retraining was
+approved.
 
 - Slurm job: `9680`
 - Partition: `pro6000`
+- Status: `COMPLETED`
+- Elapsed time: `14:52:43`
 - Output directory: `results/polarrec/polarrec_paper_128`
 - Epochs: `400`
 - Batch size: `2`
 - Learning rate: `1e-4`
-- Status on `2026-06-04 10:21 KST`: running, epoch `2/400`
-- Current validation loss at epoch 2: `0.04273505707450781`
+- Best validation epoch: `54`
+- Best validation loss: `0.0176104090046285`
+- Final validation loss at epoch 400: `0.018456205964029464`
 
 This run uses the fixed train/val/test JSON split and evaluates only the held-out
 test set after training.

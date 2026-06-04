@@ -34,7 +34,7 @@ related learned RI reconstruction papers:
 
 | Method | Imported Path | Upstream | Current Status |
 |---|---|---|---|
-| PolarRec | `baselines/PolarRec` | `https://github.com/RapidsAtHKUST/PolarRec` | Imported; no pretrained checkpoint found, so testing requires retraining or a compatible checkpoint. |
+| PolarRec | `baselines/PolarRec` | `https://github.com/RapidsAtHKUST/PolarRec` | Imported; paper-style retraining completed as `results/polarrec/polarrec_paper_128`. |
 | POLISH | `baselines/POLISH` | `https://github.com/liamconnor/polish-pub` | Imported; no pretrained weights found, so testing requires retraining or a compatible checkpoint. |
 | AIRI | `baselines/AIRI` | `https://github.com/basp-group/AIRI` | Imported; official MATLAB plug-and-play adapter still pending. |
 | R2D2 | `baselines/R2D2-SII` | `https://github.com/basp-group/R2D2-SII` | Imported; no pretrained checkpoint found, so testing requires retraining or a compatible checkpoint. |

@@ -18,10 +18,11 @@ def main() -> int:
     args = parse_args()
     rows = []
     for path in sorted(args.results_root.glob("*/test_summary.json")):
-        if "smoke" in path.parent.name:
+        name = path.parent.name
+        if any(tag in name for tag in ("smoke", "probe", "eval_only")):
             continue
         metrics = json.loads(path.read_text())
-        rows.append((path.parent.name, metrics))
+        rows.append((name, metrics))
     lines = [
         "| method | n_test | PSNR ↑ | SSIM ↑ | MSE ↓ | MAE ↓ | LFD ↓ |",
         "|---|---:|---:|---:|---:|---:|---:|",

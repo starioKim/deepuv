@@ -219,6 +219,9 @@ def evaluate(args: argparse.Namespace, checkpoint_path: Path) -> dict[str, float
     model.eval()
     test_loader = make_loader(args, "test", args.max_test_samples, False)
     rows: list[dict[str, float]] = []
+    total = len(test_loader.dataset)
+    seen = 0
+    next_report = 10
     for batch in test_loader:
         batch = move_batch(batch, device)
         outputs = forward_model(model, args.method, batch)
@@ -233,6 +236,12 @@ def evaluate(args: argparse.Namespace, checkpoint_path: Path) -> dict[str, float
             row["split"] = str(batch["split"][i])
             row["index"] = int(batch["index"][i])
             rows.append(row)
+        seen += pred_image.shape[0]
+        if total and (seen == total or 100 * seen / total >= next_report):
+            pct = 100 * seen / total
+            print(f"eval progress: {seen}/{total} ({pct:.1f}%)", flush=True)
+            while next_report <= pct:
+                next_report += 10
     metrics = aggregate(rows)
     metrics["n_test"] = float(len(rows))
     args.output_dir.mkdir(parents=True, exist_ok=True)
